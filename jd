@@ -1,0 +1,249 @@
+#!/usr/bin/env python3.9
+#
+# jd
+#
+# Collect FreeBSD Jail Data
+# Export some data for Prometheus
+#
+# Björn Busse <bj.rn@baerlin.eu>
+#
+#
+# jls_data    - data we got from jls with jls()
+# ezjail_data - data we parsed from ezjail config files with ezjails()
+# jail_data   - the combined data structure we serve
+
+import configargparse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from os import listdir
+from os.path import isfile, join
+import json
+import socket
+import subprocess
+import syslog
+
+ezjail_jails_path = '/usr/local/etc/ezjail'
+json_file_jls = '/tmp/jails_jls'
+write_json_file_jls = False
+
+jail_data = {}
+jail_data["Message"] = "Found jails"
+jail_data["Error"] = None
+jail_data["Jails"] = []
+
+
+def files_in_dir(path):
+    return [f for f in listdir(path) if isfile(join(path, f))]
+
+
+def jls():
+    d = {}
+    result = subprocess.run(['jls', '-n'], stdout=subprocess.PIPE)\
+                       .stdout.decode('utf-8')\
+                       .split('\n')
+
+    for line in result:
+        if "=" in line:
+            data = {}
+            vars = line.split(" ")
+            jail_name = ""
+            for var in vars:
+                toks = var.split('=')
+                key = toks[0]
+
+                if key == "name":
+                    jail_name = toks[1].replace("_", "-")
+                    data["Name"] = jail_name
+
+                if len(toks) == 1:
+                    value = True
+                else:
+                    value = toks[1]
+
+                key = key.replace(".", "_")
+                data[key] = value
+
+            d[jail_name] = data
+
+    return d
+
+
+# Get a mapping from files to actual jail names
+def ezjail_names(data):
+    names = {}
+
+    for jail in data:
+        names[data[jail]["hostname"]] = data[jail]["filename"].split("/")[-1]
+
+    return names
+
+
+# Read ezjail configs for all jails
+def ezjails(path, files):
+    ezjails = {}
+
+    for fn in files:
+        ezjails[fn] = ezjail(ezjail_jails_path + "/" + fn)
+
+    return ezjails
+
+
+# Read ezjail config for a single file
+# Return json
+def ezjail(file_path):
+    data = {}
+    data["state"] = "enabled"
+
+    with open(file_path) as f:
+        for line in f:
+            if line.startswith('export'):
+                line = line.replace('export ', '')
+                tok = line.split('"')
+                fn = file_path.split('/')[-1]
+
+                if ".norun" in fn:
+                    fn = fn.replace('.norun', '')
+                    data["state"] = "disabled"
+
+                key = tok[0].replace('=', '')\
+                            .replace('jail_', '')\
+                            .replace(fn + "_", '')\
+
+                value = tok[1]
+                data[key] = value
+                data["filename"] = file_path
+
+    if "hostname" not in data:
+        data["hostname"] = ""
+    if "retention_policy" not in data:
+        data["retention_policy"] = ""
+    if "vnet_enable" not in data:
+        data["vnet_enable"] = ""
+    if "vnet_interface" not in data:
+        data["vnet_interface"] = ""
+    if "exec_prestart0" not in data:
+        data["exec_prestart0"] = ""
+    if "exec_poststop0" not in data:
+        data["exec_poststop0"] = ""
+
+    return data
+
+
+def jails(names, ezjail_data, jls_data):
+    j = []
+
+    for name in names:
+        jail = {}
+        jail["ezjail"] = {}
+        jail["jls"] = {}
+
+        jail["ezjail"] = ezjail_data[name]
+
+        if name in jls_data.keys():
+            jail["jls"] = jls_data[name]
+
+        j.append(jail)
+
+    return j
+
+
+def jail_state():
+    return
+
+
+def replace_keys(od, keys):
+    nd = {}
+    # Change keys with values
+    nkeys = dict((v, k) for k, v in keys.items())
+    for k in od:
+        nd[nkeys[k]] = od[k]
+
+    return nd
+
+
+def write_jail_file(file, data):
+    with open(file, 'w') as f:
+        f.write(data)
+
+
+class Server():
+
+    def __init__(self, address, port, ezjail_jails_path):
+        self.address = address
+        self.port = int(port)
+        self.ezjail_jails_path = ezjail_jails_path
+        self.paths = ["/jails"]
+
+    def run(self):
+
+        class Handler(BaseHTTPRequestHandler):
+
+            def do_GET(self):
+
+                if self.path not in s.paths:
+                    self.send_response(404)
+                    return
+
+                # Respond with the file contents.
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin',
+                                 'https://pewu.github.io')
+                self.end_headers()
+
+                jls_data = jls()
+                ezjail_data = ezjails(ezjail_jails_path,
+                                      files_in_dir(ezjail_jails_path))
+
+                jail_names = ezjail_names(ezjail_data)
+                ezjail_data = replace_keys(ezjail_data, jail_names)
+                jail_data = jails(jail_names, ezjail_data, jls_data)
+
+                self.wfile.write(json.dumps(jail_data).encode('ascii'))
+
+        class HTTPServerV6(HTTPServer):
+            address_family = socket.AF_INET6
+
+        # Bind
+        server_address = (self.address, self.port)
+        httpd = HTTPServerV6(server_address, Handler)
+        httpd.serve_forever()
+
+
+if __name__ == '__main__':
+
+    jail_host_hostname = socket.gethostname()
+
+    default_listen_address = '[::1]'
+    default_listen_port = 8080
+
+    parser = configargparse.ArgParser(description="")
+
+    parser.add_argument('--listen-address', dest='listen_address',
+                        env_var='JD_LISTEN_ADDRESS',
+                        help="The address to listen on",
+                        type=str, default=default_listen_address)
+
+    parser.add_argument('--listen-port', dest='listen_port',
+                        env_var='JD_LISTEN_PORT',
+                        help="The port to listen on",
+                        type=str, default=default_listen_port)
+
+    args = parser.parse_args()
+    listen_address = args.listen_address
+    listen_port = args.listen_port
+    del locals()['args']
+
+    jls_data = jls()
+    ezjail_data = ezjails(ezjail_jails_path, files_in_dir(ezjail_jails_path))
+    jail_names = ezjail_names(ezjail_data)
+    ezjail_data = replace_keys(ezjail_data, jail_names)
+    jail_data = jails(jail_names, ezjail_data, jls_data)
+
+    nezjails = len(ezjail_data)
+    njls = len(jls_data)
+    msg = "is: Found {njls} of {nezjails} jails running"
+    syslog.syslog(syslog.LOG_INFO, msg)
+
+    json_str = json.dumps(jls_data)
+
+    s = Server(listen_address, listen_port, ezjail_jails_path)
+    s.run()

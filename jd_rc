@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# $FreeBSD$
+#
+# PROVIDE: jd
+# REQUIRE: NETWORKING SYSLOG
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable js
+#
+#jd_enable="YES"
+
+. /etc/rc.subr
+
+name="jd"
+rcvar="jd_enable"
+
+load_rc_config $name
+
+: ${jd_user:="jd"}
+: ${jd_enable:="NO"}
+: ${jd_directory:="/var/run"}
+: ${jd_listen_address:="[::1]"}
+: ${jd_listen_port:="8080"}
+
+command="jd"
+procname="$(echo ${command} |cut -d' ' -f1)"
+
+pidfile="${jd_directory}/${name}.pid"
+logfile="/var/log/${name}.log"
+
+start_precmd="${name}_precmd"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+
+jd_start() {
+        cd ${jd_directory}
+        export USER=${jd_user}
+        export HOME=${jd_directory}
+        /usr/sbin/daemon -f -S -u ${jd_user} -p ${pidfile} -o ${logfile} /usr/bin/env ${command}
+}
+
+jd_precmd() {
+        /usr/bin/install -d -m 0755 ${jd_directory}
+}
+
+jd_stop() {
+        if [ ! -f $pidfile ]; then
+                echo "${name} PID File not found. Maybe ${name} is not running?"
+        else
+                kill $(cat $pidfile)
+        fi
+}
+
+run_rc_command "$1"
