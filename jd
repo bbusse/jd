@@ -80,18 +80,20 @@ def ezjail_names(data):
 # Read ezjail configs for all jails
 def ezjails(path, files):
     ezjails = {}
+    hostname = socket.gethostname()
 
     for fn in files:
-        ezjails[fn] = ezjail(ezjail_jails_path + "/" + fn)
+        ezjails[fn] = ezjail(ezjail_jails_path + "/" + fn, hostname)
 
     return ezjails
 
 
 # Read ezjail config for a single file
 # Return json
-def ezjail(file_path):
+def ezjail(file_path, hostname):
     data = {}
     data["state"] = "enabled"
+    data["parent_host"] = hostname
 
     with open(file_path) as f:
         for line in f:
