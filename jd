@@ -146,10 +146,6 @@ def jails(names, ezjail_data, jls_data):
     return j
 
 
-def jail_state():
-    return
-
-
 def replace_keys(od, keys):
     nd = {}
     # Change keys with values
@@ -158,11 +154,6 @@ def replace_keys(od, keys):
         nd[nkeys[k]] = od[k]
 
     return nd
-
-
-def write_jail_file(file, data):
-    with open(file, 'w') as f:
-        f.write(data)
 
 
 class Server():
