@@ -54,15 +54,43 @@ def jd_collect():
 
     # Get data about the jailhost itself
     jd_jailhost_data = {}
-    jd_jailhost_data[s.hostname] = jd_jailhost(njails_running, njails_defined)
+    jd_jailhost_data = jd_jailhost(njails_running, njails_defined)
 
     # Bring the data sources together, build final data structure
-    data = jails(jd_jailhost_data,
-                 jail_names,
+    data = jails(jail_names,
+                 jd_jailhost_data,
                  ezjail_data,
                  jls_data)
 
     return data
+
+
+def jails(names, jd_jailhost_data, ezjail_data, jls_data):
+    j = []
+
+    for name in names:
+        jail = {}
+        jail["ezjail"] = {}
+        jail["jls"] = {}
+        jail["jd"] = {}
+        run_state = "stopped"
+
+        jail["ezjail"] = ezjail_data[name]
+
+        if name in jls_data.keys():
+            jail["jls"] = jls_data[name]
+            run_state = "started"
+
+        jail["jd"] = jd(jail["ezjail"]["parent_host"],
+                        name,
+                        jail["ezjail"]["parentzfs"],
+                        run_state)
+
+        jail["jd_jailhost"] = jd_jailhost_data
+
+        j.append(jail)
+
+    return j
 
 
 def jd_jailhost(njails_running, njails_defined):
@@ -231,34 +259,6 @@ def ezjail(file_path, hostname):
         data["exec_poststop0"] = ""
 
     return data
-
-
-def jails(jd_jailhost_data, names, ezjail_data, jls_data):
-    j = []
-
-    for name in names:
-        jail = {}
-        jail["ezjail"] = {}
-        jail["jls"] = {}
-        jail["jd"] = {}
-        run_state = "stopped"
-
-        jail["ezjail"] = ezjail_data[name]
-
-        if name in jls_data.keys():
-            jail["jls"] = jls_data[name]
-            run_state = "started"
-
-        jail["jd"] = jd(jail["ezjail"]["parent_host"],
-                        name,
-                        jail["ezjail"]["parentzfs"],
-                        run_state)
-
-        jail["jd_jailhost"] = jd_jailhost_data
-
-        j.append(jail)
-
-    return j
 
 
 def replace_keys(od, keys):
