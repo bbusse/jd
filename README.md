@@ -14,11 +14,11 @@ $ pip install --user -r requirements.txt
 ## Start jd
 ### Ad-hoc
 ```
-$ JD_LISTEN_ADDRESS=hq JD_LISTEN_PORT="8080" ./jd
+$ JD_LISTEN_ADDRESS=hq JD_LISTEN_PORT="7023" ./jd
 ```
 or
 ```
-$ ./jd --listen-address [::1] --listen-port 8080
+$ ./jd --listen-address [::1] --listen-port 7023
 ```
 ### Service
 An rc script is included  
@@ -38,7 +38,7 @@ $ sudo service jd start
 
 ## List jails
 ```
-$ curl http://[::1]:8080/jails
+$ curl http://[::1]:7023/jails
 ```
 
 # How
