@@ -47,11 +47,6 @@ One is [jls(8)](https://docs.freebsd.org/en/books/handbook/jails/) for running j
 While jls only gives information about running jails, ezjail configuration files are the source of information for defined jails.
 ezjail however is optional
 
-## Start / Stop / Restart Jail
-Not implemented
-```
-$ curl http://[::1]/jail/start/[#index]
-```
 
 # Resources
 [FreeBSD Handbook - Jails](https://docs.freebsd.org/en/books/handbook/jails/)  
