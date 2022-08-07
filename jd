@@ -36,6 +36,35 @@ jail_data["Error"] = None
 jail_data["Jails"] = []
 
 
+def jd_collect():
+    # Get jls() data
+    jls_data = jls()
+
+    # Get ezjail data
+    ezjail_data = ezjails(s.hostname,
+                          ezjail_jails_path,
+                          files_in_dir(ezjail_jails_path))
+
+    njails_running = len(jls_data)
+    njails_defined = len(ezjail_data)
+
+    # Get a mapping
+    jail_names = ezjail_names(ezjail_data)
+    ezjail_data = replace_keys(ezjail_data, jail_names)
+
+    # Get data about the jailhost itself
+    jd_jailhost_data = {}
+    jd_jailhost_data[s.hostname] = jd_jailhost(njails_running, njails_defined)
+
+    # Bring the data sources together, build final data structure
+    data = jails(jd_jailhost_data,
+                 jail_names,
+                 ezjail_data,
+                 jls_data)
+
+    return data
+
+
 def jd_jailhost(njails_running, njails_defined):
     data = {}
 
@@ -271,28 +300,10 @@ class Server():
                                  'https://pewu.github.io')
                 self.end_headers()
 
+                jail_data = jd_collect()
 
-                # Get jls() data
-                jls_data = jls()
-
-                # Get ezjail data
-                ezjail_data = ezjails(s.hostname,
-                                      ezjail_jails_path,
-                                      files_in_dir(ezjail_jails_path))
-
-                # Get a mapping
-                jail_names = ezjail_names(ezjail_data)
-                ezjail_data = replace_keys(ezjail_data, jail_names)
-
-                jd_jailhost_data = {}
-                jd_jailhost_data[s.hostname] = jd_jailhost(len(jls_data),
-                                                           len(ezjail_data))
-
-                # Bring the data sources together, build final data structure
-                jail_data = jails(jd_jailhost_data,
-                                  jail_names,
-                                  ezjail_data,
-                                  jls_data)
+                msg = "is: Found {njails_running} of {njails_defined} jails running"
+                syslog.syslog(syslog.LOG_INFO, msg)
 
                 self.wfile.write(json.dumps(jail_data).encode('ascii'))
 
@@ -328,29 +339,6 @@ if __name__ == '__main__':
     listen_address = args.listen_address
     listen_port = args.listen_port
     del locals()['args']
-
-    jd_jailhost_data = {}
-    jd_jailhost_data[hostname] = {}
-    jls_data = jls()
-    jd_jailhost_data[hostname]["num_jails_running"] = len(jls_data)
-    ezjail_data = ezjails(hostname,
-                          ezjail_jails_path,
-                          files_in_dir(ezjail_jails_path))
-
-    jail_names = ezjail_names(ezjail_data)
-
-    ezjail_data = replace_keys(ezjail_data, jail_names)
-    jail_data = jails(jd_jailhost_data,
-                      jail_names,
-                      ezjail_data,
-                      jls_data)
-
-    nezjails = len(ezjail_data)
-    njls = len(jls_data)
-    msg = "is: Found {njls} of {nezjails} jails running"
-    syslog.syslog(syslog.LOG_INFO, msg)
-
-    json_str = json.dumps(jls_data)
 
     s = Server(listen_address, listen_port, hostname, ezjail_jails_path)
     s.run()
