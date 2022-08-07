@@ -10,16 +10,20 @@
 #
 # jls_data    - data we got from jls with jls()
 # ezjail_data - data we parsed from ezjail config files with ezjails()
+# jd_data     - data we add
 # jail_data   - the combined data structure we serve
 
 import configargparse
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import listdir
 from os.path import isfile, join
 import json
+import psutil
 import socket
 import subprocess
 import syslog
+import time
 
 ezjail_jails_path = '/usr/local/etc/ezjail'
 json_file_jls = '/tmp/jails_jls'
@@ -33,6 +37,71 @@ jail_data["Jails"] = []
 
 def files_in_dir(path):
     return [f for f in listdir(path) if isfile(join(path, f))]
+
+
+def jd(hostname, jail_name, zfs_dataset, run_state):
+    data = {}
+    data["hostname"] = hostname
+    data["host_time"] = (datetime.now(timezone.utc) +
+                         timedelta(days=3)).timestamp() * 1e3
+    data["host_uptime"] = time.time() - psutil.boot_time()
+    data["run_state"] = run_state
+    data["num_processes"] = ""
+    data["commands"] = []
+
+    # Get ZFS disk space data
+    zfs = jd_zfs(zfs_dataset + "/" + jail_name)
+    data["zfs_used"] = zfs["used"]
+    data["zfs_available"] = zfs["available"]
+
+    # Get jail processes
+    data["commands"] = ps_jails(jail_name)
+    data["num_processes"] = len(data["commands"]) - 1
+
+    return data
+
+
+def jd_zfs(dataset):
+    data = {}
+
+    # Get disk space properties for zfs dataset
+    data["used"] = zfs_property(dataset, "used")
+    data["available"] = zfs_property(dataset, "available")
+
+    return data
+
+
+def zfs_property(dataset, property):
+    ps = subprocess.Popen(('zfs',
+                           'get',
+                           property,
+                           dataset), stdout=subprocess.PIPE)
+
+    property = subprocess.check_output(('awk', "/" + property + "/ {print $3}"),
+                                       stdin=ps.stdout).decode("utf-8").strip()
+    ps.wait()
+
+    return property
+
+
+def ps_jails(jail_name):
+    data = []
+    jail_name = jail_name.replace("-", "_")
+
+    ps = subprocess.Popen(('ps',
+                           'ax',
+                           '-o jail,command'),
+                          stdout=subprocess.PIPE)
+
+    data = subprocess.check_output(('awk',
+                                    "/" + jail_name + "/ {first = $1; $1 = \"\"; print $0, first; }"),
+                                   stdin=ps.stdout).decode("utf-8").split("\n")
+    ps.wait()
+
+    # Remove the last empty item
+    data.pop()
+
+    return data
 
 
 def jls():
@@ -78,9 +147,8 @@ def ezjail_names(data):
 
 
 # Read ezjail configs for all jails
-def ezjails(path, files):
+def ezjails(hostname, path, files):
     ezjails = {}
-    hostname = socket.gethostname()
 
     for fn in files:
         ezjails[fn] = ezjail(ezjail_jails_path + "/" + fn, hostname)
@@ -137,11 +205,19 @@ def jails(names, ezjail_data, jls_data):
         jail = {}
         jail["ezjail"] = {}
         jail["jls"] = {}
+        jail["jd"] = {}
+        run_state = "stopped"
 
         jail["ezjail"] = ezjail_data[name]
 
         if name in jls_data.keys():
             jail["jls"] = jls_data[name]
+            run_state = "started"
+
+        jail["jd"] = jd(jail["ezjail"]["parent_host"],
+                        name,
+                        jail["ezjail"]["parentzfs"],
+                        run_state)
 
         j.append(jail)
 
@@ -160,7 +236,8 @@ def replace_keys(od, keys):
 
 class Server():
 
-    def __init__(self, address, port, ezjail_jails_path):
+    def __init__(self, address, port, hostname, ezjail_jails_path):
+        self.hostname = hostname
         self.address = address
         self.port = int(port)
         self.ezjail_jails_path = ezjail_jails_path
@@ -176,20 +253,22 @@ class Server():
                     self.send_response(404)
                     return
 
-                # Respond with the file contents.
+                # Respond with the file contents
                 self.send_response(200)
                 self.send_header('Access-Control-Allow-Origin',
                                  'https://pewu.github.io')
                 self.end_headers()
 
                 jls_data = jls()
-                ezjail_data = ezjails(ezjail_jails_path,
+                ezjail_data = ezjails(s.hostname,
+                                      ezjail_jails_path,
                                       files_in_dir(ezjail_jails_path))
 
                 jail_names = ezjail_names(ezjail_data)
                 ezjail_data = replace_keys(ezjail_data, jail_names)
                 jail_data = jails(jail_names, ezjail_data, jls_data)
 
+                print(jail_data)
                 self.wfile.write(json.dumps(jail_data).encode('ascii'))
 
         class HTTPServerV6(HTTPServer):
@@ -203,7 +282,7 @@ class Server():
 
 if __name__ == '__main__':
 
-    jail_host_hostname = socket.gethostname()
+    hostname = socket.gethostname()
 
     default_listen_address = '[::1]'
     default_listen_port = 8080
@@ -226,8 +305,12 @@ if __name__ == '__main__':
     del locals()['args']
 
     jls_data = jls()
-    ezjail_data = ezjails(ezjail_jails_path, files_in_dir(ezjail_jails_path))
+    ezjail_data = ezjails(hostname,
+                          ezjail_jails_path,
+                          files_in_dir(ezjail_jails_path))
+
     jail_names = ezjail_names(ezjail_data)
+
     ezjail_data = replace_keys(ezjail_data, jail_names)
     jail_data = jails(jail_names, ezjail_data, jls_data)
 
@@ -238,5 +321,5 @@ if __name__ == '__main__':
 
     json_str = json.dumps(jls_data)
 
-    s = Server(listen_address, listen_port, ezjail_jails_path)
+    s = Server(listen_address, listen_port, hostname, ezjail_jails_path)
     s.run()
