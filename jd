@@ -56,7 +56,7 @@ def jd(hostname, jail_name, zfs_dataset, run_state):
 
     # Get jail processes
     data["commands"] = ps_jails(jail_name)
-    data["num_processes"] = len(data["commands"]) - 1
+    data["num_processes"] = len(data["commands"])
 
     return data
 
