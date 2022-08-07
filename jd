@@ -72,14 +72,14 @@ def jd_zfs(dataset):
 
 
 def zfs_property(dataset, property):
-    ps = subprocess.Popen(('zfs',
-                           'get',
-                           property,
-                           dataset), stdout=subprocess.PIPE)
+    cmd = ['zfs', 'get', property, dataset]
+    cmd_pipe = ['awk', "/" + property + "/ {print $3}"]
 
-    property = subprocess.check_output(('awk', "/" + property + "/ {print $3}"),
-                                       stdin=ps.stdout).decode("utf-8").strip()
+    ps = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    property = subprocess.check_output(cmd_pipe, stdin=ps.stdout)
     ps.wait()
+
+    property = property.decode("utf-8").strip()
 
     return property
 
@@ -87,16 +87,14 @@ def zfs_property(dataset, property):
 def ps_jails(jail_name):
     data = []
     jail_name = jail_name.replace("-", "_")
+    cmd = ['ps', 'ax', '-o jail,command']
+    cmd_pipe = ['awk', "/^" + jail_name + "/ {first = $1; $1 = \"\"; print $0, first; }"]
 
-    ps = subprocess.Popen(('ps',
-                           'ax',
-                           '-o jail,command'),
-                          stdout=subprocess.PIPE)
-
-    data = subprocess.check_output(('awk',
-                                    "/" + jail_name + "/ {first = $1; $1 = \"\"; print $0, first; }"),
-                                   stdin=ps.stdout).decode("utf-8").split("\n")
+    ps = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    data = subprocess.check_output(cmd_pipe, stdin=ps.stdout)
     ps.wait()
+
+    data = data.decode("utf-8").split("\n")
 
     # Remove the last empty item
     data.pop()
@@ -106,7 +104,8 @@ def ps_jails(jail_name):
 
 def jls():
     d = {}
-    result = subprocess.run(['jls', '-n'], stdout=subprocess.PIPE)\
+    cmd = ['jls', '-n']
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)\
                        .stdout.decode('utf-8')\
                        .split('\n')
 
@@ -268,7 +267,6 @@ class Server():
                 ezjail_data = replace_keys(ezjail_data, jail_names)
                 jail_data = jails(jail_names, ezjail_data, jls_data)
 
-                print(jail_data)
                 self.wfile.write(json.dumps(jail_data).encode('ascii'))
 
         class HTTPServerV6(HTTPServer):
