@@ -54,6 +54,6 @@ $ curl http://[::1]/jail/start/[#index]
 ```
 
 # Resources
-[FreeBSD Handbooki - Jails](https://docs.freebsd.org/en/books/handbook/jails/)  
+[FreeBSD Handbook - Jails](https://docs.freebsd.org/en/books/handbook/jails/)  
 [jls(8) Manual Page](https://www.freebsd.org/cgi/man.cgi?query=jls&sektion=8)  
 [ezjail](https://erdgeist.org/arts/software/ezjail/)  
