@@ -36,15 +36,16 @@ jail_data["Error"] = None
 jail_data["Jails"] = []
 
 
-def jd_jailhost():
+def jd_jailhost(njails_running, njails_defined):
     data = {}
 
     data["hostname"] = hostname
     data["host_time"] = (datetime.now(timezone.utc) +
                          timedelta(days=3)).timestamp() * 1e3
     data["host_uptime"] = time.time() - psutil.boot_time()
-    data["num_jails_running"] = len(jls_data)
-    data["num_jails_defined"] = len(ezjail_data)
+    data["host_load"] = psutil.getloadavg()
+    data["num_jails_running"] = njails_running
+    data["num_jails_defined"] = njails_defined
 
     return data
 
@@ -284,7 +285,8 @@ class Server():
                 ezjail_data = replace_keys(ezjail_data, jail_names)
 
                 jd_jailhost_data = {}
-                jd_jailhost_data[s.hostname] = jd_jailhost()
+                jd_jailhost_data[s.hostname] = jd_jailhost(len(jls_data),
+                                                           len(ezjail_data))
 
                 # Bring the data sources together, build final data structure
                 jail_data = jails(jd_jailhost_data,
