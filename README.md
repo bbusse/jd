@@ -1,4 +1,6 @@
 # jd
+[![GitHub Super-Linter](https://github.com/bbusse/qr-code-service/workflows/Lint%20Code%20Base/badge.svg)](https://github.com/marketplace/actions/super-linter)
+
 Collects data about FreeBSD jails and makes it available as JSON,  
 exports data for Prometheus
 
