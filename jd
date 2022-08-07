@@ -36,7 +36,7 @@ jail_data["Error"] = None
 jail_data["Jails"] = []
 
 
-def jd_collect():
+def jd_collect(listen_address, listen_port):
     # Get jls() data
     jls_data = jls()
 
@@ -54,7 +54,10 @@ def jd_collect():
 
     # Get data about the jailhost itself
     jd_jailhost_data = {}
-    jd_jailhost_data = jd_jailhost(njails_running, njails_defined)
+    jd_jailhost_data = jd_jailhost(listen_address,
+                                   listen_port,
+                                   njails_running,
+                                   njails_defined)
 
     # Bring the data sources together, build final data structure
     data = jails(jail_names,
@@ -93,10 +96,12 @@ def jails(names, jd_jailhost_data, ezjail_data, jls_data):
     return j
 
 
-def jd_jailhost(njails_running, njails_defined):
+def jd_jailhost(address, port, njails_running, njails_defined):
     data = {}
 
     data["hostname"] = hostname
+    data["host_listen_address"] = address
+    data["host_listen_port"] = port
     data["host_time"] = (datetime.now(timezone.utc) +
                          timedelta(days=3)).timestamp() * 1e3
     data["host_uptime"] = time.time() - psutil.boot_time()
@@ -300,7 +305,7 @@ class Server():
                                  'https://pewu.github.io')
                 self.end_headers()
 
-                jail_data = jd_collect()
+                jail_data = jd_collect(s.address, s.port)
 
                 msg = "is: Found {njails_running} of {njails_defined} jails running"
                 syslog.syslog(syslog.LOG_INFO, msg)
