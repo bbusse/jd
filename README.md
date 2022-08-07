@@ -24,7 +24,7 @@ An rc script is included
 $ sudo cp jd_rc /usr/local/etc/rc.d/jd
 ```
 jd can run as its own unprivileged user as long as only data about jails
-is required. Manipulation of jails , e.g. start and stop needs root privileges
+is required. Manipulation of jails, e.g. start and stop needs root privileges
 ```
 $ sudo service jd onestart
 ```
@@ -41,8 +41,7 @@ $ curl http://[::1]:8080/jails
 
 # How
 jd as of now has two sources of information.  
-One is [jls(8)](https://docs.freebsd.org/en/books/handbook/jails/) for running jails.  
-The other is the per jail config file of ezjail.  
+One is [jls(8)](https://docs.freebsd.org/en/books/handbook/jails/) for running jails. The other is the per jail config file of ezjail.  
 While jls only gives information about running jails, ezjail configuration files are the source of information for defined jails.
 ezjail however is optional
 
