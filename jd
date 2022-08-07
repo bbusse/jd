@@ -11,6 +11,7 @@
 # jls_data    - data we got from jls with jls()
 # ezjail_data - data we parsed from ezjail config files with ezjails()
 # jd_data     - data we add
+# jd_jailhost - data about the serving jail host
 # jail_data   - the combined data structure we serve
 
 import configargparse
@@ -35,16 +36,21 @@ jail_data["Error"] = None
 jail_data["Jails"] = []
 
 
-def files_in_dir(path):
-    return [f for f in listdir(path) if isfile(join(path, f))]
-
-
-def jd(hostname, jail_name, zfs_dataset, run_state):
+def jd_jailhost():
     data = {}
+
     data["hostname"] = hostname
     data["host_time"] = (datetime.now(timezone.utc) +
                          timedelta(days=3)).timestamp() * 1e3
     data["host_uptime"] = time.time() - psutil.boot_time()
+    data["num_jails_running"] = len(jls_data)
+    data["num_jails_defined"] = len(ezjail_data)
+
+    return data
+
+
+def jd(hostname, jail_name, zfs_dataset, run_state):
+    data = {}
     data["run_state"] = run_state
     data["num_processes"] = ""
     data["commands"] = []
@@ -197,7 +203,7 @@ def ezjail(file_path, hostname):
     return data
 
 
-def jails(names, ezjail_data, jls_data):
+def jails(jd_jailhost_data, names, ezjail_data, jls_data):
     j = []
 
     for name in names:
@@ -218,6 +224,8 @@ def jails(names, ezjail_data, jls_data):
                         jail["ezjail"]["parentzfs"],
                         run_state)
 
+        jail["jd_jailhost"] = jd_jailhost_data
+
         j.append(jail)
 
     return j
@@ -231,6 +239,10 @@ def replace_keys(od, keys):
         nd[nkeys[k]] = od[k]
 
     return nd
+
+
+def files_in_dir(path):
+    return [f for f in listdir(path) if isfile(join(path, f))]
 
 
 class Server():
@@ -258,14 +270,27 @@ class Server():
                                  'https://pewu.github.io')
                 self.end_headers()
 
+
+                # Get jls() data
                 jls_data = jls()
+
+                # Get ezjail data
                 ezjail_data = ezjails(s.hostname,
                                       ezjail_jails_path,
                                       files_in_dir(ezjail_jails_path))
 
+                # Get a mapping
                 jail_names = ezjail_names(ezjail_data)
                 ezjail_data = replace_keys(ezjail_data, jail_names)
-                jail_data = jails(jail_names, ezjail_data, jls_data)
+
+                jd_jailhost_data = {}
+                jd_jailhost_data[s.hostname] = jd_jailhost()
+
+                # Bring the data sources together, build final data structure
+                jail_data = jails(jd_jailhost_data,
+                                  jail_names,
+                                  ezjail_data,
+                                  jls_data)
 
                 self.wfile.write(json.dumps(jail_data).encode('ascii'))
 
@@ -302,7 +327,10 @@ if __name__ == '__main__':
     listen_port = args.listen_port
     del locals()['args']
 
+    jd_jailhost_data = {}
+    jd_jailhost_data[hostname] = {}
     jls_data = jls()
+    jd_jailhost_data[hostname]["num_jails_running"] = len(jls_data)
     ezjail_data = ezjails(hostname,
                           ezjail_jails_path,
                           files_in_dir(ezjail_jails_path))
@@ -310,7 +338,10 @@ if __name__ == '__main__':
     jail_names = ezjail_names(ezjail_data)
 
     ezjail_data = replace_keys(ezjail_data, jail_names)
-    jail_data = jails(jail_names, ezjail_data, jls_data)
+    jail_data = jails(jd_jailhost_data,
+                      jail_names,
+                      ezjail_data,
+                      jls_data)
 
     nezjails = len(ezjail_data)
     njls = len(jls_data)
