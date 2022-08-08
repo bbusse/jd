@@ -258,6 +258,8 @@ def ezjail(file_path, hostname):
         data["vnet_enable"] = ""
     if "vnet_interface" not in data:
         data["vnet_interface"] = ""
+    if "parentzfs" not in data:
+        data["parentzfs"] = ""
     if "exec_prestart0" not in data:
         data["exec_prestart0"] = ""
     if "exec_poststop0" not in data:
