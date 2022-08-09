@@ -27,8 +27,6 @@ import syslog
 import time
 
 ezjail_jails_path = '/usr/local/etc/ezjail'
-json_file_jls = '/tmp/jails_jls'
-write_json_file_jls = False
 
 jail_data = {}
 jail_data["Message"] = "Found jails"
