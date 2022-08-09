@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import listdir
 from os.path import isfile, join
 import json
+import platform
 import psutil
 import socket
 import subprocess
@@ -97,7 +98,8 @@ def jails(names, jd_jailhost_data, ezjail_data, jls_data):
 def jd_jailhost(address, port, njails_running, njails_defined):
     data = {}
 
-    data["hostname"] = hostname
+    data["host_name"] = hostname
+    data["host_os_release"] = platform.release()
     data["host_listen_address"] = address
     data["host_listen_port"] = port
     data["host_time"] = str(datetime.now(timezone.utc).isoformat())
