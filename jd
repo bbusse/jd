@@ -102,9 +102,8 @@ def jd_jailhost(address, port, njails_running, njails_defined):
     data["hostname"] = hostname
     data["host_listen_address"] = address
     data["host_listen_port"] = port
-    data["host_time"] = (datetime.now(timezone.utc) +
-                         timedelta(days=3)).timestamp() * 1e3
-    data["host_uptime"] = time.time() - psutil.boot_time()
+    data["host_time"] = str(datetime.now(timezone.utc).isoformat())
+    data["host_uptime"] = int(time.time() - psutil.boot_time())
     data["host_load"] = psutil.getloadavg()
     data["num_jails_running"] = njails_running
     data["num_jails_defined"] = njails_defined
