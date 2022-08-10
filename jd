@@ -15,17 +15,20 @@
 # jail_data   - the combined data structure we serve
 
 import configargparse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from os import listdir
 from os.path import isfile, join
 import json
 import platform
 import psutil
+import signal
 import socket
 import subprocess
+import sys
 import syslog
 import time
+from zeroconf import IPVersion, ServiceInfo, Zeroconf
 
 ezjail_jails_path = '/usr/local/etc/ezjail'
 
@@ -152,11 +155,12 @@ def zfs_property(dataset, property):
     return property
 
 
-def ps_jails(jail_name):
+def ps_jails(name):
     data = []
-    jail_name = jail_name.replace("-", "_")
+    name = name.replace("-", "_")
     cmd = ['ps', 'ax', '-o jail,command']
-    cmd_pipe = ['awk', "/^" + jail_name + "/ {first = $1; $1 = \"\"; print $0, first; }"]
+    cmd_pipe = ['awk', "/^" + name + "/ \
+                {first = $1; $1 = \"\"; print $0, first; }"]
 
     ps = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     data = subprocess.check_output(cmd_pipe, stdin=ps.stdout)
@@ -267,6 +271,21 @@ def ezjail(file_path, hostname):
     return data
 
 
+def zc_register_service(service):
+    ip_version = IPVersion.V6Only
+
+    zeroconf = Zeroconf(ip_version=ip_version)
+    zeroconf.register_service(service)
+
+    return zeroconf
+
+
+def zc_unregister(zc, service):
+    print("Unregistering zeroconf service")
+    zc.unregister_service(service)
+    zc.close()
+
+
 def replace_keys(od, keys):
     nd = {}
     # Change keys with values
@@ -308,7 +327,9 @@ class Server():
 
                 jail_data = jd_collect(s.address, s.port)
 
-                msg = "is: Found {njails_running} of {njails_defined} jails running"
+                msg = "is: Found {njails_running} of \
+                       {njails_defined} jails running"
+
                 syslog.syslog(syslog.LOG_INFO, msg)
 
                 self.wfile.write(json.dumps(jail_data).encode('ascii'))
@@ -326,8 +347,13 @@ if __name__ == '__main__':
 
     hostname = socket.gethostname()
 
-    default_listen_address = '[::1]'
+    default_listen_address = '::1'
     default_listen_port = 7023
+    default_zeroconf_publish_service = False
+
+    zc_service_type = "_http._tcp.local."
+    zc_service_name = "jd-" + hostname + "." + zc_service_type
+    zc_service_properties = {"path": "/jails/"}
 
     parser = configargparse.ArgParser(description="")
 
@@ -341,10 +367,42 @@ if __name__ == '__main__':
                         help="The port to listen on",
                         type=str, default=default_listen_port)
 
+    parser.add_argument('--zeroconf-publish', dest='zeroconf_publish_service',
+                        env_var='JD_ZEROCONF_PUBLISH',
+                        help="Zeroconf Support",
+                        type=str, default=default_zeroconf_publish_service)
+
     args = parser.parse_args()
     listen_address = args.listen_address
     listen_port = args.listen_port
+    zeroconf_publish_service = args.zeroconf_publish_service
     del locals()['args']
+
+    zc_service = ServiceInfo(
+        zc_service_type,
+        zc_service_name,
+        addresses=[socket.inet_pton(socket.AF_INET6,
+                                    listen_address)],
+        port=int(listen_port),
+        properties={'path': '/jails/'},
+        server=hostname + ".local.",
+    )
+
+    # Publish service
+    if zeroconf_publish_service:
+        zc = zc_register_service(zc_service)
+
+    def signal_handler(number, *args):
+        print('Signal received:', number)
+
+        # Unpublish service
+        if zeroconf_publish_service:
+            zc_unregister(zc, zc_service)
+
+        sys.exit(0)
+
+    # Register signal handler
+    signal.signal(signal.SIGINT, signal_handler)
 
     s = Server(listen_address, listen_port, hostname, ezjail_jails_path)
     s.run()
